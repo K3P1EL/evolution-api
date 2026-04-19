@@ -3231,11 +3231,14 @@ export class BaileysStartupService extends ChannelStartupService {
       interactiveMessage: {
         body: {
           text: (() => {
-            let t = '*' + data.title + '*';
+            // FIX cosmético: solo agregar asteriscos si hay title real (evita "**" vacío)
+            let t = '';
+            if (data.title && data.title.trim()) {
+              t += '*' + data.title + '*';
+            }
             if (data?.description) {
-              t += '\n\n';
+              if (t) t += '\n\n';
               t += data.description;
-              t += '\n';
             }
             return t;
           })(),
