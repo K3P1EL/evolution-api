@@ -1995,13 +1995,35 @@ export class BaileysStartupService extends ChannelStartupService {
     if (messageId) option.messageId = messageId;
 
     if (message['viewOnceMessage']) {
+      // FIX B (baileys_helpers inline): inyectar additionalNodes <biz> + <interactive> + <native_flow> + <bot>
+      // para que WhatsApp renderice botones nativos en cuentas NO-business (Baileys QR).
+      // Sin esto, Meta filtra el mensaje y aparece como "Esperando el mensaje" o "No se pudo cargar".
+      const isInteractive = !!message['viewOnceMessage']?.message?.interactiveMessage?.nativeFlowMessage;
+      const isGroup = sender.endsWith('@g.us');
+      const additionalNodes = isInteractive
+        ? [
+            {
+              tag: 'biz',
+              attrs: {},
+              content: [
+                {
+                  tag: 'interactive',
+                  attrs: { type: 'native_flow', v: '1' },
+                  content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' }, content: [] }],
+                },
+              ],
+            },
+            ...(isGroup ? [] : [{ tag: 'bot', attrs: { biz_bot: '1' }, content: [] }]),
+          ]
+        : undefined;
+
       const m = generateWAMessageFromContent(sender, message, {
         timestamp: new Date(),
         userJid: this.instance.wuid,
         messageId,
         quoted,
       });
-      const id = await this.client.relayMessage(sender, message, { messageId });
+      const id = await this.client.relayMessage(sender, message, { messageId, additionalNodes });
       m.key = { id: id, remoteJid: sender, participant: isPnUser(sender) ? sender : undefined, fromMe: true };
       for (const [key, value] of Object.entries(m)) {
         if (!value || (isArray(value) && value.length) === 0) {
