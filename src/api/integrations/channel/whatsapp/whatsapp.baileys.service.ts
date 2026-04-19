@@ -658,17 +658,16 @@ export class BaileysStartupService extends ChannelStartupService {
       userDevicesCache: this.userDevicesCache,
       transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 },
       patchMessageBeforeSending(message) {
+        // Fix PR #2461: NO usar JSON.parse(JSON.stringify) porque destruye los Long de protobuf
+        // y produce error "this.isZero is not a function" al enviar listas/botones.
+        // Mutamos directamente sin clonar.
         if (
           message.deviceSentMessage?.message?.listMessage?.listType === proto.Message.ListMessage.ListType.PRODUCT_LIST
         ) {
-          message = JSON.parse(JSON.stringify(message));
-
           message.deviceSentMessage.message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
         }
 
         if (message.listMessage?.listType == proto.Message.ListMessage.ListType.PRODUCT_LIST) {
-          message = JSON.parse(JSON.stringify(message));
-
           message.listMessage.listType = proto.Message.ListMessage.ListType.SINGLE_SELECT;
         }
 
