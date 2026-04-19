@@ -1994,11 +1994,14 @@ export class BaileysStartupService extends ChannelStartupService {
     // NOTE: NÃO DEVEMOS GERAR O messageId AQUI, SOMENTE SE VIER INFORMADO POR PARAMETRO. A GERAÇÃO ANTERIOR IMPEDE O WZAP DE IDENTIFICAR A SOURCE.
     if (messageId) option.messageId = messageId;
 
-    if (message['viewOnceMessage']) {
-      // FIX B (baileys_helpers inline): inyectar additionalNodes <biz> + <interactive> + <native_flow> + <bot>
-      // para que WhatsApp renderice botones nativos en cuentas NO-business (Baileys QR).
-      // Sin esto, Meta filtra el mensaje y aparece como "Esperando el mensaje" o "No se pudo cargar".
-      const isInteractive = !!message['viewOnceMessage']?.message?.interactiveMessage?.nativeFlowMessage;
+    if (message['viewOnceMessage'] || message['interactiveMessage']) {
+      // FIX B v2 (baileys_helpers inline): inyectar additionalNodes <biz> + <interactive> + <native_flow> + <bot>
+      // para que WhatsApp Web/Desktop/Android renderice botones nativos en cuentas NO-business (Baileys QR).
+      // Sin viewOnceMessage wrap (rompe Web). Sin content: [] vacíos (rompe Web).
+      const isInteractive = !!(
+        message['interactiveMessage']?.nativeFlowMessage ||
+        message['viewOnceMessage']?.message?.interactiveMessage?.nativeFlowMessage
+      );
       const isGroup = sender.endsWith('@g.us');
       const additionalNodes = isInteractive
         ? [
@@ -2009,11 +2012,11 @@ export class BaileysStartupService extends ChannelStartupService {
                 {
                   tag: 'interactive',
                   attrs: { type: 'native_flow', v: '1' },
-                  content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' }, content: [] }],
+                  content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }],
                 },
               ],
             },
-            ...(isGroup ? [] : [{ tag: 'bot', attrs: { biz_bot: '1' }, content: [] }]),
+            ...(isGroup ? [] : [{ tag: 'bot', attrs: { biz_bot: '1' } }]),
           ]
         : undefined;
 
@@ -3194,15 +3197,12 @@ export class BaileysStartupService extends ChannelStartupService {
         throw new BadRequestException('PIX button cannot be mixed with other button types');
       }
 
+      // FIX B v2: SIN viewOnceMessage wrap (Android lo tolera, Web lo rechaza)
       const message: proto.IMessage = {
-        viewOnceMessage: {
-          message: {
-            interactiveMessage: {
-              nativeFlowMessage: {
-                buttons: [{ name: this.mapType.get('pix'), buttonParamsJson: this.toJSONString(data.buttons[0]) }],
-                messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
-              },
-            },
+        interactiveMessage: {
+          nativeFlowMessage: {
+            buttons: [{ name: this.mapType.get('pix'), buttonParamsJson: this.toJSONString(data.buttons[0]) }],
+            messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
           },
         },
       };
@@ -3226,35 +3226,32 @@ export class BaileysStartupService extends ChannelStartupService {
       return { name: this.mapType.get(value.type), buttonParamsJson: this.toJSONString(value) };
     });
 
+    // FIX B v2: SIN viewOnceMessage wrap para que renderice en WhatsApp Web también
     const message: proto.IMessage = {
-      viewOnceMessage: {
-        message: {
-          interactiveMessage: {
-            body: {
-              text: (() => {
-                let t = '*' + data.title + '*';
-                if (data?.description) {
-                  t += '\n\n';
-                  t += data.description;
-                  t += '\n';
-                }
-                return t;
-              })(),
-            },
-            footer: { text: data?.footer },
-            header: (() => {
-              if (generate?.message?.imageMessage) {
-                return {
-                  hasMediaAttachment: !!generate.message.imageMessage,
-                  imageMessage: generate.message.imageMessage,
-                };
-              }
-            })(),
-            nativeFlowMessage: {
-              buttons: buttons,
-              messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
-            },
-          },
+      interactiveMessage: {
+        body: {
+          text: (() => {
+            let t = '*' + data.title + '*';
+            if (data?.description) {
+              t += '\n\n';
+              t += data.description;
+              t += '\n';
+            }
+            return t;
+          })(),
+        },
+        footer: { text: data?.footer },
+        header: (() => {
+          if (generate?.message?.imageMessage) {
+            return {
+              hasMediaAttachment: !!generate.message.imageMessage,
+              imageMessage: generate.message.imageMessage,
+            };
+          }
+        })(),
+        nativeFlowMessage: {
+          buttons: buttons,
+          messageParamsJson: JSON.stringify({ from: 'api', templateId: v4() }),
         },
       },
     };
