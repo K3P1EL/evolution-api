@@ -3532,13 +3532,23 @@ export class BaileysStartupService extends ChannelStartupService {
   public async markMessageAsRead(data: ReadMessageDto) {
     try {
       const keys: proto.IMessageKey[] = [];
+      let skipped = 0;
       data.readMessages.forEach((read) => {
-        if (isJidGroup(read.remoteJid) || isPnUser(read.remoteJid)) {
+        // DANO PATCH: aceptar cualquier JID válido (incluido @lid),
+        // no solo @s.whatsapp.net y grupos. Antes el filtro descartaba @lid
+        // silenciosamente y devolvía success sin marcar nada.
+        if (read.remoteJid && read.remoteJid.includes('@') && read.id) {
           keys.push({ remoteJid: read.remoteJid, fromMe: read.fromMe, id: read.id });
+        } else {
+          skipped++;
         }
       });
+      if (keys.length === 0) {
+        this.logger.warn(`markMessageAsRead: 0 keys to mark (skipped=${skipped})`);
+        return { message: 'Read messages', read: 'no_valid_keys', skipped };
+      }
       await this.client.readMessages(keys);
-      return { message: 'Read messages', read: 'success' };
+      return { message: 'Read messages', read: 'success', count: keys.length };
     } catch (error) {
       throw new InternalServerErrorException('Read messages fail', error.toString());
     }
